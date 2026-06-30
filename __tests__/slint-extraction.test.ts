@@ -134,4 +134,36 @@ export component MainWindow inherits Window implements Greeter {
       ])
     );
   });
+
+  it('records Slint re-export barrels as import dependencies', () => {
+    const code = `
+export { AboutPage } from "about_page.slint";
+export { TableViewPage, TableViewPageAdapter } from "table_view_page.slint";
+`;
+    const result = extractFromSource('ui/pages/pages.slint', code);
+    const file = result.nodes.find((n) => n.kind === 'file' && n.name === 'pages.slint');
+    expect(file).toBeDefined();
+
+    expect(result.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'import',
+          name: 'about_page.slint',
+          signature: 'export { AboutPage } from "about_page.slint";',
+        }),
+        expect.objectContaining({
+          kind: 'import',
+          name: 'table_view_page.slint',
+          signature: 'export { TableViewPage, TableViewPageAdapter } from "table_view_page.slint";',
+        }),
+      ])
+    );
+    expect(result.unresolvedReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fromNodeId: file?.id, referenceKind: 'imports', referenceName: 'AboutPage' }),
+        expect.objectContaining({ fromNodeId: file?.id, referenceKind: 'imports', referenceName: 'TableViewPage' }),
+        expect.objectContaining({ fromNodeId: file?.id, referenceKind: 'imports', referenceName: 'TableViewPageAdapter' }),
+      ])
+    );
+  });
 });

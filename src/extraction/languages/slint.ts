@@ -52,6 +52,16 @@ function slintImportModule(node: SyntaxNode, source: string): string | null {
   return getNodeText(stringNode, source).replace(/^"|"$/g, '');
 }
 
+function slintReExportInfo(node: SyntaxNode, source: string): { moduleName: string; names: SyntaxNode[] } | null {
+  const moduleName = slintImportModule(node, source);
+  if (!moduleName) return null;
+  const names = node.namedChildren
+    .filter((c) => c.type === 'export_type')
+    .map((c) => getChildByField(c, 'local_name') ?? c.namedChildren.find((n) => n.type === 'user_type_identifier'))
+    .filter((c): c is SyntaxNode => !!c);
+  return names.length > 0 ? { moduleName, names } : null;
+}
+
 export const slintExtractor: LanguageExtractor = {
   functionTypes: ['function_definition', 'function_declaration'],
   classTypes: ['global_definition'],
@@ -71,6 +81,28 @@ export const slintExtractor: LanguageExtractor = {
   paramsField: 'arguments',
   returnField: 'return_type',
   visitNode: (node, ctx) => {
+    if (node.type === 'export_statement') {
+      const reExport = slintReExportInfo(node, ctx.source);
+      if (!reExport) return false;
+
+      const importNode = ctx.createNode('import', reExport.moduleName, node, {
+        signature: getNodeText(node, ctx.source).trim(),
+      });
+      const fromNodeId = ctx.nodeStack[ctx.nodeStack.length - 1] ?? importNode?.id;
+      if (!fromNodeId) return true;
+
+      for (const nameNode of reExport.names) {
+        ctx.addUnresolvedReference({
+          fromNodeId,
+          referenceName: getNodeText(nameNode, ctx.source),
+          referenceKind: 'imports',
+          line: nameNode.startPosition.row + 1,
+          column: nameNode.startPosition.column,
+        });
+      }
+      return true;
+    }
+
     if (node.type === 'component_definition') {
       const nameNode = getChildByField(node, 'name');
       if (!nameNode) return false;
